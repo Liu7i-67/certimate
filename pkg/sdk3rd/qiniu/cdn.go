@@ -140,6 +140,22 @@ type CreateDomainRequestSource struct {
 }
 
 // REF: https://developer.qiniu.com/fusion/4246/the-domain-name
+type CreateDomainRequestCache struct {
+	// 缓存规则列表。
+	CacheControls []CreateDomainRequestCacheControl `json:"cacheControls"`
+}
+
+// REF: https://developer.qiniu.com/fusion/4246/the-domain-name
+type CreateDomainRequestCacheControl struct {
+	// 缓存时长；0 表示遵循源站。
+	Time int64 `json:"time"`
+	// 时间单位（秒/分/时/天 对应的数值单位）。
+	Timeunit int64 `json:"timeunit"`
+	// 规则类型；"all" 表示全局规则。
+	Type string `json:"type"`
+}
+
+// REF: https://developer.qiniu.com/fusion/4246/the-domain-name
 type CreateDomainRequest struct {
 	// 加速域名（泛域名以 "." 开头）。
 	Name string `json:"name"`
@@ -153,6 +169,8 @@ type CreateDomainRequest struct {
 	Protocol string `json:"protocol"`
 	// 回源参数（将域名关联到七牛 bucket 时使用 sourceType="qiniuBucket"）。
 	Source *CreateDomainRequestSource `json:"source"`
+	// 缓存配置；平台为动态加速时可缺省，其余平台必填。time=0 表示遵循源站，type="all" 表示全局规则。
+	Cache *CreateDomainRequestCache `json:"cache,omitempty"`
 	// ICP 备案号；创建域名返回 500230（备案校验失败）等错误时按需传入。
 	RegisterNo string `json:"registerNo,omitempty"`
 }
@@ -163,9 +181,10 @@ type CreateDomainResponse struct {
 }
 
 // REF: https://developer.qiniu.com/fusion/4246/the-domain-name
+// 创建域名：域名为资源名，需置于请求路径中（POST /domain/{name}）；域名仅由字母数字与点号等组成，无需转义。
 func (m *CdnManager) CreateDomain(ctx context.Context, req *CreateDomainRequest) (*CreateDomainResponse, error) {
 	resp := new(CreateDomainResponse)
-	if err := m.client.CallWithJson(ctx, resp, http.MethodPost, urlf("domain"), nil, req); err != nil {
+	if err := m.client.CallWithJson(ctx, resp, http.MethodPost, urlf("domain/%s", req.Name), nil, req); err != nil {
 		return nil, err
 	}
 	return resp, nil

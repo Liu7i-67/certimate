@@ -54,6 +54,10 @@ type DeployerConfig struct {
 type qiniuDomainClient interface {
 	GetDomainInfo(ctx context.Context, domain string) (*qiniusdk.GetDomainInfoResponse, error)
 	CreateDomain(ctx context.Context, req *qiniusdk.CreateDomainRequest) (*qiniusdk.CreateDomainResponse, error)
+	// EnableDomainHttps 对应 CDN 的 sslize 接口（PUT /domain/{name}/sslize）：
+	// CDN 加速域名需先开启 HTTPS 才能挂证书，sslize 一步完成「开启 HTTPS + 绑定证书」且幂等
+	// （httpsconf 对未开启 HTTPS 的域名返回 400/400302「更改证书失败」，此为该问题的解法）。
+	EnableDomainHttps(ctx context.Context, domain string, certId string, forceHttps bool, http2Enable bool) (*qiniusdk.EnableDomainHttpsResponse, error)
 }
 
 // DNS 解析记录客户端（测试缝）。
@@ -166,11 +170,26 @@ func (d *Deployer) Deploy(ctx context.Context, certPEM, privkeyPEM string) (*Dep
 		d.logger.Info("ssl certificate uploaded", slog.Any("result", upres))
 	}
 
-	// 绑定空间域名证书
-	bindBucketCertResp, err := d.sdkClient.BindBucketCert(ctx, d.config.Domain, upres.CertId)
-	d.logger.Debug("sdk request 'kodo.BindCert'", slog.String("params.domain", d.config.Domain), slog.String("params.certId", upres.CertId), slog.Any("response", bindBucketCertResp))
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute sdk request 'kodo.BindCert': %w", err)
+	// 绑定证书：autoOnboard 通过 CDN API 接入的是 CDN 加速域名，须走 CDN 的证书绑定接口
+	// （kodo.BindCert 仅支持源站域名，对 CDN 加速域名报 domaintype is not allowed）；
+	// 关闭时保持原有绑定路径，语句顺序与原逻辑完全一致
+	if d.config.AutoOnboard {
+		// 绑定证书用 sslize（EnableDomainHttps）而非 httpsconf：CDN 加速域名需先 sslize 开启 HTTPS
+		// 才能挂证书，sslize 一步完成「开启 HTTPS + 绑定证书」，且对已开启域名重复调用为幂等更新
+		// （httpsconf 对未开启 HTTPS 的域名返回 400/400302「更改证书失败」）。
+		// 不强制 HTTPS 跳转、不开启 HTTP/2，保持保守默认
+		enableDomainHttpsResp, err := d.sdkDomain.EnableDomainHttps(ctx, d.config.Domain, upres.CertId, false, false)
+		d.logger.Debug("sdk request 'cdn.EnableDomainHttps'", slog.String("params.domain", d.config.Domain), slog.String("params.certId", upres.CertId), slog.Any("response", enableDomainHttpsResp))
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute sdk request 'cdn.EnableDomainHttps': %w", err)
+		}
+	} else {
+		// 绑定空间域名证书
+		bindBucketCertResp, err := d.sdkClient.BindBucketCert(ctx, d.config.Domain, upres.CertId)
+		d.logger.Debug("sdk request 'kodo.BindCert'", slog.String("params.domain", d.config.Domain), slog.String("params.certId", upres.CertId), slog.Any("response", bindBucketCertResp))
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute sdk request 'kodo.BindCert': %w", err)
+		}
 	}
 
 	return &DeployResult{}, nil
@@ -192,6 +211,10 @@ func (d *Deployer) autoOnboardDomain(ctx context.Context) error {
 			Source: &qiniusdk.CreateDomainRequestSource{
 				SourceType:        "qiniuBucket",
 				SourceQiniuBucket: d.config.Bucket,
+			},
+			// web 平台缓存配置必填（缺失时七牛返回 400/400309），此处显式带上默认值：全局规则、遵循源站
+			Cache: &qiniusdk.CreateDomainRequestCache{
+				CacheControls: []qiniusdk.CreateDomainRequestCacheControl{{Time: 0, Timeunit: 0, Type: "all"}},
 			},
 		}
 		createDomainResp, err := d.sdkDomain.CreateDomain(ctx, createDomainReq)

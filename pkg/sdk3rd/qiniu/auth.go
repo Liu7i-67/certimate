@@ -20,6 +20,14 @@ func newTransport(mac *auth.Credentials, tr http.RoundTripper) *transport {
 }
 
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Qiniu's V2 signature includes `req.Host` in the signed data, but Go's
+	// net/http only populates `req.Host` from the URL when the request is
+	// actually sent. Sign with the effective host so the signature matches
+	// the outgoing Host header; callers that set Host explicitly are unaffected.
+	if req.Host == "" {
+		req.Host = req.URL.Host
+	}
+
 	token, err := t.mac.SignRequestV2(req)
 	if err != nil {
 		return nil, err

@@ -61,13 +61,23 @@ type fakeDomainItem struct {
 	stateReadyAt int // 第 N 次查询后状态变为 success
 }
 
+// fakeEnableHttpsCall：一次 EnableDomainHttps（sslize）调用的参数记录。
+type fakeEnableHttpsCall struct {
+	domain      string
+	certId      string
+	forceHttps  bool
+	http2Enable bool
+}
+
 // fakeDomainClient：七牛域名管理客户端。
 type fakeDomainClient struct {
 	mu      sync.Mutex
 	domains map[string]*fakeDomainItem
 
-	createCalls int
-	getCalls    int
+	createCalls      int
+	getCalls         int
+	enableHttpsCalls []fakeEnableHttpsCall         // 累计 EnableDomainHttps（sslize）调用记录
+	lastCreateReq    *qiniusdk.CreateDomainRequest // 最近一次 CreateDomain 请求（供断言缓存配置等）
 
 	createErr           error // CreateDomain 返回的错误（模拟平台错误，如备案校验失败；域名不会创建成功）
 	createErrButCreated error // CreateDomain 返回的错误，但域名实际已创建成功（模拟平台瞬态误判/上次执行半途创建成功）
@@ -109,6 +119,7 @@ func (f *fakeDomainClient) CreateDomain(_ context.Context, req *qiniusdk.CreateD
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.createCalls++
+	f.lastCreateReq = req
 
 	// 域名实际已创建成功，但接口返回错误（模拟平台瞬态误判）
 	if f.createErrButCreated != nil {
@@ -123,6 +134,27 @@ func (f *fakeDomainClient) CreateDomain(_ context.Context, req *qiniusdk.CreateD
 	// 模拟域名创建成功：CName 与生效状态稍后（再次查询时）才就绪
 	f.domains[req.Name] = &fakeDomainItem{cnameReadyAt: 1, stateReadyAt: 2}
 	return &qiniusdk.CreateDomainResponse{}, nil
+}
+
+func (f *fakeDomainClient) EnableDomainHttps(_ context.Context, domain string, certId string, forceHttps bool, http2Enable bool) (*qiniusdk.EnableDomainHttpsResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.enableHttpsCalls = append(f.enableHttpsCalls, fakeEnableHttpsCall{domain: domain, certId: certId, forceHttps: forceHttps, http2Enable: http2Enable})
+	return &qiniusdk.EnableDomainHttpsResponse{}, nil
+}
+
+// enableHttpsCallCount 返回 EnableDomainHttps（sslize）累计调用次数。
+func (f *fakeDomainClient) enableHttpsCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.enableHttpsCalls)
+}
+
+// lastEnableHttpsCall 返回最近一次 EnableDomainHttps（sslize）调用记录。
+func (f *fakeDomainClient) lastEnableHttpsCall() fakeEnableHttpsCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.enableHttpsCalls[len(f.enableHttpsCalls)-1]
 }
 
 // fakeDNSClient：DNS 解析记录客户端（内存存储，模拟 EnsureDomainRecord 三态语义）。
@@ -203,10 +235,67 @@ func TestDeploy_AutoOnboardDisabled(t *testing.T) {
 
 	require.Equal(t, 1, certmgr.calls)
 	require.Equal(t, 1, kodo.calls)
+	require.Equal(t, 0, domainClient.enableHttpsCallCount())
 	require.Equal(t, 0, domainClient.getCalls)
 	require.Equal(t, 0, domainClient.createCalls)
 	require.Equal(t, 0, dnsClient.createCalls)
 	require.Equal(t, 0, dnsClient.updateCalls)
+}
+
+// T1-2：证书绑定按 autoOnboard 分支——开启时走 CDN EnableDomainHttps（sslize，恰一次、参数正确）且不调用 kodo.BindCert；
+// 关闭时仍走 kodo.BindCert（原有路径回归）。
+func TestDeploy_CertBindingBranch(t *testing.T) {
+	t.Run("auto onboard enabled binds via cdn EnableDomainHttps", func(t *testing.T) {
+		certmgr := &fakeCertmgr{}
+		kodo := &fakeKodoClient{}
+		domainClient := newFakeDomainClient()
+		dnsClient := newFakeDNSClient()
+
+		deployer := newTestDeployer(&DeployerConfig{
+			AccessKey:          "ak",
+			SecretKey:          "sk",
+			Bucket:             testBucket,
+			Domain:             testDomain,
+			AutoOnboard:        true,
+			DnsAccessKeyId:     "dns-ak",
+			DnsAccessKeySecret: "dns-sk",
+		}, certmgr, kodo, domainClient, dnsClient)
+
+		_, err := deployer.Deploy(context.Background(), "CERT", "KEY")
+		require.NoError(t, err)
+
+		// CDN EnableDomainHttps（sslize）恰一次：参数为部署域名、上传所得证书 ID、不强制 HTTPS 跳转、不开启 HTTP/2
+		require.Equal(t, 1, domainClient.enableHttpsCallCount())
+		call := domainClient.lastEnableHttpsCall()
+		require.Equal(t, testDomain, call.domain)
+		require.Equal(t, "cert-1", call.certId)
+		require.False(t, call.forceHttps)
+		require.False(t, call.http2Enable)
+
+		// 不再走 kodo.BindCert
+		require.Equal(t, 0, kodo.calls)
+	})
+
+	t.Run("auto onboard disabled binds via kodo.BindCert", func(t *testing.T) {
+		certmgr := &fakeCertmgr{}
+		kodo := &fakeKodoClient{}
+		domainClient := newFakeDomainClient()
+		dnsClient := newFakeDNSClient()
+
+		deployer := newTestDeployer(&DeployerConfig{
+			AccessKey: "ak",
+			SecretKey: "sk",
+			Bucket:    testBucket,
+			Domain:    testDomain,
+		}, certmgr, kodo, domainClient, dnsClient)
+
+		_, err := deployer.Deploy(context.Background(), "CERT", "KEY")
+		require.NoError(t, err)
+
+		// 原有路径回归：仍调用 kodo.BindCert，且不触碰 CDN EnableDomainHttps
+		require.Equal(t, 1, kodo.calls)
+		require.Equal(t, 0, domainClient.enableHttpsCallCount())
+	})
 }
 
 // T2：域名不存在时 CreateDomain 恰一次；已存在时不再创建。
@@ -253,6 +342,40 @@ func TestDeploy_AutoOnboardCreateDomainIdempotent(t *testing.T) {
 		require.Equal(t, 0, domainClient.createCalls)
 		require.Equal(t, 1, dnsClient.createCalls)
 	})
+}
+
+// T2-2：CreateDomain 请求体必须携带默认缓存配置（web 等非动态平台必填，缺失时七牛返回 400/400309）——
+// 断言 Cache 为全局规则（type="all"）、遵循源站（time=0/timeunit=0），且 name 与待部署域名一致。
+func TestDeploy_AutoOnboardCreateDomainRequestCache(t *testing.T) {
+	domainClient := newFakeDomainClient()
+	dnsClient := newFakeDNSClient()
+
+	deployer := newTestDeployer(&DeployerConfig{
+		AccessKey:          "ak",
+		SecretKey:          "sk",
+		Bucket:             testBucket,
+		Domain:             testDomain,
+		AutoOnboard:        true,
+		DnsAccessKeyId:     "dns-ak",
+		DnsAccessKeySecret: "dns-sk",
+	}, &fakeCertmgr{}, &fakeKodoClient{}, domainClient, dnsClient)
+
+	_, err := deployer.Deploy(context.Background(), "CERT", "KEY")
+	require.NoError(t, err)
+
+	require.Equal(t, 1, domainClient.createCalls)
+	require.NotNil(t, domainClient.lastCreateReq)
+
+	// 域名即资源名：请求体 name 与待部署域名一致（SDK 侧请求路径为 POST domain/{name}）
+	require.Equal(t, testDomain, domainClient.lastCreateReq.Name)
+
+	// 默认缓存配置：全局规则、遵循源站
+	require.NotNil(t, domainClient.lastCreateReq.Cache)
+	require.Len(t, domainClient.lastCreateReq.Cache.CacheControls, 1)
+	cacheControl := domainClient.lastCreateReq.Cache.CacheControls[0]
+	require.Equal(t, int64(0), cacheControl.Time)
+	require.Equal(t, int64(0), cacheControl.Timeunit)
+	require.Equal(t, "all", cacheControl.Type)
 }
 
 // T3：CNAME 三态——不存在则创建；指向一致则跳过；指向不同时按覆盖开关更新或报错（错误含现有记录值）。
@@ -418,6 +541,9 @@ func TestDeploy_AutoOnboardIdempotentRerun(t *testing.T) {
 	require.Equal(t, 1, domainClient.createCalls)
 	require.Equal(t, 1, dnsClient.createCalls)
 	require.Equal(t, 0, dnsClient.updateCalls)
+	// 两次部署均通过 CDN EnableDomainHttps（sslize）绑定证书，不走 kodo.BindCert
+	require.Equal(t, 0, kodo.calls)
+	require.Equal(t, 2, domainClient.enableHttpsCallCount())
 }
 
 // P1-2：CreateDomain 报错时重查域名信息——重查成功视为幂等成功；重查失败透出原始 CreateDomain 错误。
