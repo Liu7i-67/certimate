@@ -91,11 +91,7 @@ const BizDeployNodeConfigFieldsProviderQiniuKodo = () => {
           label={t("workflow_node.deploy.form.qiniu_kodo_dns_provider_access.label")}
           rules={[formRule]}
         >
-          <AccessSelect
-            placeholder={t("workflow_node.deploy.form.qiniu_kodo_dns_provider_access.placeholder")}
-            showSearch
-            onFilter={dnsAccessOptionFilter}
-          />
+          <AccessSelect placeholder={t("workflow_node.deploy.form.qiniu_kodo_dns_provider_access.placeholder")} showSearch onFilter={dnsAccessOptionFilter} />
         </Form.Item>
 
         <Form.Item

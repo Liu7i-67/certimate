@@ -101,11 +101,7 @@ const BizDeployNodeConfigFieldsProviderAliyunOSS = () => {
           label={t("workflow_node.deploy.form.aliyun_oss_dns_provider_access.label")}
           rules={[formRule]}
         >
-          <AccessSelect
-            placeholder={t("workflow_node.deploy.form.aliyun_oss_dns_provider_access.placeholder")}
-            showSearch
-            onFilter={dnsAccessOptionFilter}
-          />
+          <AccessSelect placeholder={t("workflow_node.deploy.form.aliyun_oss_dns_provider_access.placeholder")} showSearch onFilter={dnsAccessOptionFilter} />
         </Form.Item>
 
         <Form.Item

@@ -6,8 +6,7 @@ import (
 	"net/http"
 )
 
-type ListBucketCnameRequest struct {
-}
+type ListBucketCnameRequest struct{}
 
 type ListBucketCnameResponseCname struct {
 	Domain       *string `json:",omitempty" xml:"Domain,omitempty"`
