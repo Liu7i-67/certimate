@@ -10,8 +10,10 @@ import (
 type ProviderFactoryFunc func(options *ProviderFactoryOptions) (core.Deployer, error)
 
 type ProviderFactoryOptions struct {
-	ProviderAccessConfig   map[string]any
-	ProviderExtendedConfig map[string]any
+	ProviderAccessConfig      map[string]any
+	ProviderExtendedConfig    map[string]any
+	ProviderDNSAccessConfig   map[string]any // 可选：DNS 提供商授权配置（部署节点自动接入域名时使用）
+	ProviderDNSAccessProvider string         // 可选：DNS 提供商授权的提供商类型（如 "aliyun"；部署节点自动接入域名时使用）
 }
 
 type Registry[T comparable] interface {

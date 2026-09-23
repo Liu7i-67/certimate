@@ -9,6 +9,7 @@ import (
 	"github.com/certimate-go/certimate/internal/certmgmt"
 	"github.com/certimate-go/certimate/internal/domain"
 	"github.com/certimate-go/certimate/internal/repository"
+	xmaps "github.com/certimate-go/certimate/pkg/utils/maps"
 )
 
 /**
@@ -88,14 +89,32 @@ func (ne *bizDeployNodeExecutor) Execute(execCtx *NodeExecutionContext) (*NodeEx
 		}
 	}
 
+	// 读取 DNS 提供商授权（仅自动接入域名开启时加载）；
+	// autoOnboard 关闭时即使配置了 dnsProviderAccessId 也不查询，避免 access 被删后老节点误失败
+	providerDNSAccessConfig := make(map[string]any)
+	var providerDNSAccessProvider string
+	if xmaps.GetBool(nodeCfg.ProviderConfig, "autoOnboard") {
+		if dnsProviderAccessId := xmaps.GetString(nodeCfg.ProviderConfig, "dnsProviderAccessId"); dnsProviderAccessId != "" {
+			access, err := ne.accessRepo.GetById(execCtx.Context(), dnsProviderAccessId)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get dns access #%s record: %w", dnsProviderAccessId, err)
+			}
+
+			providerDNSAccessConfig = access.Config
+			providerDNSAccessProvider = access.Provider
+		}
+	}
+
 	// 部署证书
 	deployer := certmgmt.NewClient(certmgmt.WithLogger(ne.logger))
 	deployReq := &certmgmt.DeployCertificateRequest{
-		Provider:               domain.DeploymentProviderType(nodeCfg.Provider),
-		ProviderAccessConfig:   providerAccessConfig,
-		ProviderExtendedConfig: nodeCfg.ProviderConfig,
-		CertificatePEM:         inputCertificate.Certificate,
-		PrivateKeyPEM:          inputCertificate.PrivateKey,
+		Provider:                  domain.DeploymentProviderType(nodeCfg.Provider),
+		ProviderAccessConfig:      providerAccessConfig,
+		ProviderExtendedConfig:    nodeCfg.ProviderConfig,
+		ProviderDNSAccessConfig:   providerDNSAccessConfig,
+		ProviderDNSAccessProvider: providerDNSAccessProvider,
+		CertificatePEM:            inputCertificate.Certificate,
+		PrivateKeyPEM:             inputCertificate.PrivateKey,
 	}
 	if _, err := deployer.DeployCertificate(execCtx.Context(), deployReq); err != nil {
 		ne.logger.Warn("could not deploy certificate")

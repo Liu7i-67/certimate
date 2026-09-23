@@ -9,6 +9,7 @@ require (
 	github.com/G-Core/gcorelabscdn-go v1.0.37
 	github.com/akamai/AkamaiOPEN-edgegrid-golang/v13 v13.4.0
 	github.com/alibabacloud-go/alb-20200616/v2 v2.3.2
+	github.com/alibabacloud-go/alidns-20150109/v4 v4.7.0
 	github.com/alibabacloud-go/apig-20240327/v11 v11.2.3
 	github.com/alibabacloud-go/cas-20200407/v4 v4.7.1
 	github.com/alibabacloud-go/cdn-20180510/v10 v10.2.0
@@ -93,6 +94,7 @@ require (
 	gitlab.ecloud.com/ecloud/ecloudsdkcore v1.0.6
 	gitlab.ecloud.com/ecloud/ecloudsdkvlb v1.0.7
 	golang.org/x/crypto v0.55.0
+	golang.org/x/net v0.58.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0
@@ -273,7 +275,6 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/image v0.44.0 // indirect
 	golang.org/x/mod v0.38.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect

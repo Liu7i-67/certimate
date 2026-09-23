@@ -12,14 +12,19 @@ import (
 )
 
 var (
-	fp               = tester.InitArgs("ALIYUNOSS_")
-	fTestCertPath    string
-	fTestKeyPath     string
-	fAccessKeyId     string
-	fAccessKeySecret string
-	fRegion          string
-	fBucket          string
-	fDomain          string
+	fp                  = tester.InitArgs("ALIYUNOSS_")
+	fTestCertPath       string
+	fTestKeyPath        string
+	fAccessKeyId        string
+	fAccessKeySecret    string
+	fRegion             string
+	fBucket             string
+	fDomain             string
+	fAutoOnboard        bool
+	fDnsAccessKeyId     string
+	fDnsAccessKeySecret string
+	fDnsOverwrite       bool
+	fWaitVerifyTimeout  int64
 )
 
 func init() {
@@ -30,6 +35,11 @@ func init() {
 	fp.DefineString(&fRegion, "REGION")
 	fp.DefineString(&fBucket, "BUCKET")
 	fp.DefineString(&fDomain, "DOMAIN")
+	fp.DefineBool(&fAutoOnboard, "AUTOONBOARD")
+	fp.DefineString(&fDnsAccessKeyId, "DNSACCESSKEYID")
+	fp.DefineString(&fDnsAccessKeySecret, "DNSACCESSKEYSECRET")
+	fp.DefineBool(&fDnsOverwrite, "DNSOVERWRITE")
+	fp.DefineInt64(&fWaitVerifyTimeout, "WAITVERIFYTIMEOUT")
 }
 
 /*
@@ -54,6 +64,31 @@ func TestProvider(t *testing.T) {
 			Region:          fRegion,
 			Bucket:          fBucket,
 			Domain:          fDomain,
+		})
+		require.NoError(t, err)
+
+		tester.Deploy(t, provider, tester.DeployInput{CertPath: fTestCertPath, KeyPath: fTestKeyPath})
+	})
+
+	t.Run("DeployWithAutoOnboard", func(t *testing.T) {
+		if !fAutoOnboard {
+			t.Skip("ALIYUNOSS_AUTOONBOARD not enabled, skip")
+		}
+		if fDnsAccessKeyId == "" || fDnsAccessKeySecret == "" {
+			t.Fatal("ALIYUNOSS_DNSACCESSKEYID and ALIYUNOSS_DNSACCESSKEYSECRET are required when auto-onboard enabled")
+		}
+
+		provider, err := impl.NewDeployer(&impl.DeployerConfig{
+			AccessKeyId:          fAccessKeyId,
+			AccessKeySecret:      fAccessKeySecret,
+			Region:               fRegion,
+			Bucket:               fBucket,
+			Domain:               fDomain,
+			AutoOnboard:          fAutoOnboard,
+			DnsAccessKeyId:       fDnsAccessKeyId,
+			DnsAccessKeySecret:   fDnsAccessKeySecret,
+			DnsOverwriteExisting: fDnsOverwrite,
+			WaitVerifyTimeout:    int32(fWaitVerifyTimeout),
 		})
 		require.NoError(t, err)
 

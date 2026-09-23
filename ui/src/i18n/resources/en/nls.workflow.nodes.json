@@ -893,6 +893,37 @@
         "label": "Alibaba Cloud OSS custom domain",
         "placeholder": "Please enter Alibaba Cloud OSS bucket custom domain name"
       },
+      "aliyun_oss_auto_onboard": {
+        "block": "Automatic domain onboarding",
+        "label": "Enable automatic domain onboarding",
+        "errmsg": {
+          "wildcard_unsupported": "Auto domain onboarding does not support wildcard domains"
+        },
+        "tooltip": "When enabled, the custom domain will be automatically onboarded to Alibaba Cloud OSS on deployment (including ownership verification), and the certificate will be uploaded and bound once the DNS records take effect. The domain must have completed ICP filing, and the Alibaba Cloud access credentials require oss:PutCname, oss:ListCname and Alibaba Cloud DNS record read/write permissions."
+      },
+      "aliyun_oss_dns_overwrite_existing": {
+        "label": "Overwrite existing DNS records",
+        "tooltip": "When enabled, existing CNAME records pointing to a different value will be overwritten. Disabled by default, in which case the deployment fails with an error to protect existing DNS resolution (the error message includes the current record value)."
+      },
+      "aliyun_oss_dns_provider": {
+        "label": "DNS provider",
+        "placeholder": "Please select a DNS provider",
+        "option": {
+          "aliyun_dns": {
+            "label": "Alibaba Cloud DNS"
+          }
+        }
+      },
+      "aliyun_oss_dns_provider_access": {
+        "label": "DNS provider access credentials",
+        "placeholder": "Please select DNS provider access credentials"
+      },
+      "aliyun_oss_wait_verify_timeout": {
+        "label": "Domain activation wait timeout",
+        "placeholder": "Please enter the timeout for waiting domain activation",
+        "tooltip": "The maximum time to wait for domain verification/CNAME propagation after onboarding (60-3600 seconds). The deployment fails on timeout.",
+        "unit": "s"
+      },
       "aliyun_vod_region": {
         "label": "Alibaba Cloud region",
         "placeholder": "Please enter Alibaba Cloud VOD region (e.g. cn-hangzhou)",
@@ -2082,6 +2113,37 @@
       "qiniu_kodo_domain": {
         "label": "Qiniu Kodo custom domain",
         "placeholder": "Please enter Qiniu Kodo bucket custom domain name"
+      },
+      "qiniu_kodo_auto_onboard": {
+        "block": "Automatic domain onboarding",
+        "label": "Enable automatic domain onboarding",
+        "errmsg": {
+          "wildcard_unsupported": "Auto domain onboarding does not support wildcard domains"
+        },
+        "tooltip": "When enabled, the custom domain will be automatically onboarded to Qiniu on deployment, and the certificate will be uploaded and bound once the CNAME record takes effect. The domain must have completed ICP filing, and the Qiniu access credentials require Kodo read/write and CDN domain management permissions."
+      },
+      "qiniu_kodo_dns_overwrite_existing": {
+        "label": "Overwrite existing DNS records",
+        "tooltip": "When enabled, existing CNAME records pointing to a different value will be overwritten. Disabled by default, in which case the deployment fails with an error to protect existing DNS resolution (the error message includes the current record value)."
+      },
+      "qiniu_kodo_dns_provider": {
+        "label": "DNS provider",
+        "placeholder": "Please select a DNS provider",
+        "option": {
+          "aliyun_dns": {
+            "label": "Alibaba Cloud DNS"
+          }
+        }
+      },
+      "qiniu_kodo_dns_provider_access": {
+        "label": "DNS provider access credentials",
+        "placeholder": "Please select DNS provider access credentials"
+      },
+      "qiniu_kodo_wait_verify_timeout": {
+        "label": "Domain activation wait timeout",
+        "placeholder": "Please enter the timeout for waiting domain activation",
+        "tooltip": "The maximum time to wait for domain verification/CNAME propagation after onboarding (60-3600 seconds). The deployment fails on timeout.",
+        "unit": "s"
       },
       "qiniu_pili_hub": {
         "label": "Qiniu Pili hub",

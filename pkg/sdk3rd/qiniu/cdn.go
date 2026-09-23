@@ -128,3 +128,45 @@ func (m *CdnManager) EnableDomainHttps(ctx context.Context, domain string, certI
 	}
 	return resp, nil
 }
+
+// REF: https://developer.qiniu.com/fusion/4246/the-domain-name
+type CreateDomainRequestSource struct {
+	// 回源类型；"qiniuBucket" 表示回源七牛云存储 bucket。
+	SourceType string `json:"sourceType"`
+	// 回源的七牛云存储 bucket 名称；sourceType 为 "qiniuBucket" 时必填。
+	SourceQiniuBucket string `json:"sourceQiniuBucket,omitempty"`
+	// 回源域名；sourceType 为 "domain" 时必填。
+	SourceDomain string `json:"sourceDomain,omitempty"`
+}
+
+// REF: https://developer.qiniu.com/fusion/4246/the-domain-name
+type CreateDomainRequest struct {
+	// 加速域名（泛域名以 "." 开头）。
+	Name string `json:"name"`
+	// 域名类型："normal"、"wildcard"。
+	Type string `json:"type"`
+	// 平台类型："web"、"download"、"vod"、"dynamic"。
+	Platform string `json:"platform"`
+	// 加速区域："china"、"foreign"、"global"；为 "china"/"global" 时域名需已完成 ICP 备案。
+	GeoCover string `json:"geoCover"`
+	// 协议类型："http"、"https"。
+	Protocol string `json:"protocol"`
+	// 回源参数（将域名关联到七牛 bucket 时使用 sourceType="qiniuBucket"）。
+	Source *CreateDomainRequestSource `json:"source"`
+	// ICP 备案号；创建域名返回 500230（备案校验失败）等错误时按需传入。
+	RegisterNo string `json:"registerNo,omitempty"`
+}
+
+type CreateDomainResponse struct {
+	Code  *int    `json:"code,omitempty"`
+	Error *string `json:"error,omitempty"`
+}
+
+// REF: https://developer.qiniu.com/fusion/4246/the-domain-name
+func (m *CdnManager) CreateDomain(ctx context.Context, req *CreateDomainRequest) (*CreateDomainResponse, error) {
+	resp := new(CreateDomainResponse)
+	if err := m.client.CallWithJson(ctx, resp, http.MethodPost, urlf("domain"), nil, req); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
