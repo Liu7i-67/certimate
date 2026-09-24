@@ -13,6 +13,12 @@ import { useFormNestedFieldsContext } from "./_context";
 // v1 仅支持阿里云 DNS 作为 DNS 提供商
 const DNS_PROVIDER_ALIYUN_DNS = "aliyun-dns" as const;
 
+// 域名加速区域：中国大陆（需 ICP 备案）/ 全球（需 ICP 备案）/ 境外（免备案）
+const GEO_COVER_CHINA = "china" as const;
+const GEO_COVER_GLOBAL = "global" as const;
+const GEO_COVER_FOREIGN = "foreign" as const;
+const GEO_COVER_VALUES = [GEO_COVER_CHINA, GEO_COVER_GLOBAL, GEO_COVER_FOREIGN] as const;
+
 const BizDeployNodeConfigFieldsProviderQiniuKodo = () => {
   const { i18n, t } = useTranslation();
 
@@ -25,6 +31,7 @@ const BizDeployNodeConfigFieldsProviderQiniuKodo = () => {
   const initialValues = getInitialValues();
 
   const fieldAutoOnboard = Form.useWatch([parentNamePath, "autoOnboard"], { form: formInst, preserve: true });
+  const fieldGeoCover = Form.useWatch([parentNamePath, "geoCover"], { form: formInst, preserve: true });
 
   const dnsAccessOptionFilter = (_: string, option: AccessModel) => {
     if (option.reserve) return false;
@@ -120,6 +127,42 @@ const BizDeployNodeConfigFieldsProviderQiniuKodo = () => {
             suffix={t("workflow_node.deploy.form.qiniu_kodo_wait_verify_timeout.unit")}
           />
         </Form.Item>
+
+        <Form.Item
+          name={[parentNamePath, "geoCover"]}
+          initialValue={initialValues.geoCover}
+          label={t("workflow_node.deploy.form.qiniu_kodo_geo_cover.label")}
+          rules={[formRule]}
+        >
+          <Select
+            options={[
+              {
+                label: t("workflow_node.deploy.form.qiniu_kodo_geo_cover.option.china.label"),
+                value: GEO_COVER_CHINA,
+              },
+              {
+                label: t("workflow_node.deploy.form.qiniu_kodo_geo_cover.option.global.label"),
+                value: GEO_COVER_GLOBAL,
+              },
+              {
+                label: t("workflow_node.deploy.form.qiniu_kodo_geo_cover.option.foreign.label"),
+                value: GEO_COVER_FOREIGN,
+              },
+            ]}
+            placeholder={t("workflow_node.deploy.form.qiniu_kodo_geo_cover.placeholder")}
+          />
+        </Form.Item>
+
+        <Show when={fieldGeoCover !== GEO_COVER_FOREIGN}>
+          <Form.Item
+            name={[parentNamePath, "icpRegisterNo"]}
+            initialValue={initialValues.icpRegisterNo}
+            label={t("workflow_node.deploy.form.qiniu_kodo_icp_register_no.label")}
+            rules={[formRule]}
+          >
+            <Input placeholder={t("workflow_node.deploy.form.qiniu_kodo_icp_register_no.placeholder")} />
+          </Form.Item>
+        </Show>
       </Show>
     </>
   );
@@ -134,6 +177,8 @@ const getInitialValues = (): Nullish<z.infer<ReturnType<typeof getSchema>>> => {
     dnsProviderAccessId: "",
     dnsOverwriteExisting: false,
     waitVerifyTimeout: 600,
+    geoCover: GEO_COVER_CHINA,
+    icpRegisterNo: "",
   };
 };
 
@@ -149,6 +194,16 @@ const getSchema = ({ i18n = getI18n() }: { i18n?: ReturnType<typeof getI18n> }) 
       dnsProviderAccessId: z.string().nullish(),
       dnsOverwriteExisting: z.boolean().nullish(),
       waitVerifyTimeout: z.coerce.number().int().min(60).max(3600).nullish(),
+      // 加速区域：非空时必须为三值之一（undefined/null 兼容存量工作流配置）
+      geoCover: z
+        .string()
+        .nullish()
+        .refine(
+          (v) => v == null || v === "" || (GEO_COVER_VALUES as readonly string[]).includes(v),
+          t("workflow_node.deploy.form.qiniu_kodo_geo_cover.errmsg.invalid")
+        ),
+      // ICP 备案号选填：不做硬必填校验，避免存量工作流编辑被卡，备案校验交由平台错误透出（决策记录 #19）
+      icpRegisterNo: z.string().nullish(),
     })
     .superRefine((values, ctx) => {
       // 启用自动接入域名时，暂不支持泛域名

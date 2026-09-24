@@ -2120,7 +2120,7 @@
         "errmsg": {
           "wildcard_unsupported": "Auto domain onboarding does not support wildcard domains"
         },
-        "tooltip": "When enabled, the custom domain will be automatically onboarded to Qiniu on deployment, and the certificate will be uploaded and bound once the CNAME record takes effect. The domain must have completed ICP filing, and the Qiniu access credentials require Kodo read/write and CDN domain management permissions."
+        "tooltip": "When enabled, the custom domain will be automatically onboarded to Qiniu on deployment, and the certificate will be uploaded and bound once the CNAME record takes effect. When onboarding a new root domain for the first time, certimate will automatically write a domain ownership verification TXT record to the DNS and trigger the verification. If the acceleration region is set to China mainland or Global, the domain must have completed ICP filing and the filing number can be filled in optionally; the Overseas region is exempt from ICP filing. The Qiniu access credentials require Kodo read/write and CDN domain management permissions."
       },
       "qiniu_kodo_dns_overwrite_existing": {
         "label": "Overwrite existing DNS records",
@@ -2144,6 +2144,28 @@
         "placeholder": "Please enter the timeout for waiting domain activation",
         "tooltip": "The maximum time to wait for domain verification/CNAME propagation after onboarding (60-3600 seconds). The deployment fails on timeout.",
         "unit": "s"
+      },
+      "qiniu_kodo_geo_cover": {
+        "label": "Acceleration region",
+        "placeholder": "Please select an acceleration region",
+        "errmsg": {
+          "invalid": "Please select a valid acceleration region"
+        },
+        "option": {
+          "china": {
+            "label": "China mainland"
+          },
+          "global": {
+            "label": "Global"
+          },
+          "foreign": {
+            "label": "Overseas"
+          }
+        }
+      },
+      "qiniu_kodo_icp_register_no": {
+        "label": "ICP filing number",
+        "placeholder": "Please enter the ICP filing number (optional), e.g. 沪ICP备XXXXXXX号"
       },
       "qiniu_pili_hub": {
         "label": "Qiniu Pili hub",

@@ -189,3 +189,58 @@ func (m *CdnManager) CreateDomain(ctx context.Context, req *CreateDomainRequest)
 	}
 	return resp, nil
 }
+
+// 查询域名归属权验证信息（未公开 OpenAPI；域名不存在时也可调用）。
+// 其中 Dns 为 DNS 验证方式的挑战信息：Host 是主机记录（非固定值，须动态读取）、
+// RecordValue 是记录值；Domain 是记录的挂载基准域（可能是根域名，不等于待验证域名本身），
+// 记录的完整 FQDN 为 Host + "." + Domain。
+type GetDomainVerifyInfoResponse struct {
+	Code  *int    `json:"code,omitempty"`
+	Error *string `json:"error,omitempty"`
+	// 验证状态："doing"（待验证）、"success"（已通过）、"no_need"（无需验证）。
+	State string `json:"state"`
+	// DNS 验证记录的挂载基准域；可能是根域名，不等于待验证（部署）域名。
+	Domain string `json:"domain"`
+	// DNS 验证方式的挑战信息；无 DNS 验证挑战时为空。
+	Dns *struct {
+		// 主机记录（RR）；非固定值，必须动态读取（实测为 "verification"）。
+		Host string `json:"host"`
+		// 记录类型（实测为 "TXT"）。
+		RecordType string `json:"recordType"`
+		// 记录值。
+		RecordValue string `json:"recordValue"`
+	} `json:"dns,omitempty"`
+}
+
+// 查询域名归属权验证信息：GET /domain/{name}/verify/info?product=cdn。
+func (m *CdnManager) GetDomainVerifyInfo(ctx context.Context, domain string) (*GetDomainVerifyInfoResponse, error) {
+	query := url.Values{}
+	query.Set("product", "cdn")
+
+	resp := new(GetDomainVerifyInfoResponse)
+	if err := m.client.Call(ctx, resp, http.MethodGet, urlf("domain/%s/verify/info?%s", domain, query.Encode()), nil); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+type CheckDomainVerifyResponse struct {
+	Code  *int    `json:"code,omitempty"`
+	Error *string `json:"error,omitempty"`
+}
+
+// 触发域名归属权校验：POST /domain/{name}/verify/check（body 固定 {"type":"dns","product":"cdn"}）。
+// 校验由平台主动查询 DNS 解析记录；记录未生效时接口返回非 200（调用方按间隔轮询重试即可），
+// HTTP 200 即校验通过。
+func (m *CdnManager) CheckDomainVerify(ctx context.Context, domain string) (*CheckDomainVerifyResponse, error) {
+	req := &struct {
+		Type    string `json:"type"`
+		Product string `json:"product"`
+	}{Type: "dns", Product: "cdn"}
+
+	resp := new(CheckDomainVerifyResponse)
+	if err := m.client.CallWithJson(ctx, resp, http.MethodPost, urlf("domain/%s/verify/check", domain), nil, req); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}

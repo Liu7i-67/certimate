@@ -25,6 +25,8 @@ func init() {
 			AutoOnboard:          xmaps.GetBool(options.ProviderExtendedConfig, "autoOnboard"),
 			DnsOverwriteExisting: xmaps.GetBool(options.ProviderExtendedConfig, "dnsOverwriteExisting"),
 			WaitVerifyTimeout:    xmaps.GetInt32(options.ProviderExtendedConfig, "waitVerifyTimeout"),
+			GeoCover:             xmaps.GetString(options.ProviderExtendedConfig, "geoCover"),
+			IcpRegisterNo:        xmaps.GetString(options.ProviderExtendedConfig, "icpRegisterNo"),
 		}
 
 		// 自动接入域名开启时，加载 DNS 提供商授权配置

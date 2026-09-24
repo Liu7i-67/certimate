@@ -28,6 +28,20 @@ const (
 	domainOperatingStateOfflined = "offlined" // 已下线
 )
 
+// 七牛域名归属权验证状态（GET /domain/{name}/verify/info 的 state 取值）。
+const (
+	domainVerifyStateDoing   = "doing"   // 待验证
+	domainVerifyStateSuccess = "success" // 已通过验证
+	domainVerifyStateNoNeed  = "no_need" // 无需验证
+)
+
+// 七牛 CDN 加速区域（CreateDomain 的 geoCover 取值）。
+const (
+	geoCoverChina   = "china"   // 中国大陆（需已完成 ICP 备案）
+	geoCoverForeign = "foreign" // 中国大陆以外（免备案）
+	geoCoverGlobal  = "global"  // 全球（需已完成 ICP 备案）
+)
+
 type DeployerConfig struct {
 	// 七牛云 AccessKey。
 	AccessKey string `json:"accessKey"`
@@ -48,6 +62,11 @@ type DeployerConfig struct {
 	DnsOverwriteExisting bool `json:"dnsOverwriteExisting,omitempty"`
 	// 等待域名校验生效的超时秒数；小于等于 0 时取默认值 600。
 	WaitVerifyTimeout int32 `json:"waitVerifyTimeout,omitempty"`
+
+	// CDN 加速区域："china"（默认，需已完成 ICP 备案）| "foreign"（中国大陆以外，免备案）| "global"（全球，需已完成 ICP 备案）；空串取默认值。
+	GeoCover string `json:"geoCover,omitempty"`
+	// ICP 备案号；加速区域为 "china"/"global" 时平台可能要求提供，可空。
+	IcpRegisterNo string `json:"icpRegisterNo,omitempty"`
 }
 
 // 七牛域名管理客户端（测试缝）。
@@ -58,6 +77,12 @@ type qiniuDomainClient interface {
 	// CDN 加速域名需先开启 HTTPS 才能挂证书，sslize 一步完成「开启 HTTPS + 绑定证书」且幂等
 	// （httpsconf 对未开启 HTTPS 的域名返回 400/400302「更改证书失败」，此为该问题的解法）。
 	EnableDomainHttps(ctx context.Context, domain string, certId string, forceHttps bool, http2Enable bool) (*qiniusdk.EnableDomainHttpsResponse, error)
+	// GetDomainVerifyInfo 对应 CDN 的归属权验证信息接口（GET /domain/{name}/verify/info?product=cdn）：
+	// 返回归属权验证状态与 DNS 验证挑战（域名不存在时也可调用）。
+	GetDomainVerifyInfo(ctx context.Context, domain string) (*qiniusdk.GetDomainVerifyInfoResponse, error)
+	// CheckDomainVerify 对应 CDN 的归属权校验接口（POST /domain/{name}/verify/check）：
+	// 触发平台主动查询 DNS 验证记录，记录未生效时返回非 200（错误），HTTP 200 即通过。
+	CheckDomainVerify(ctx context.Context, domain string) (*qiniusdk.CheckDomainVerifyResponse, error)
 }
 
 // DNS 解析记录客户端（测试缝）。
@@ -75,6 +100,8 @@ const (
 	defaultWaitVerifyTimeout = 600 * time.Second
 	// 轮询域名状态的间隔时间。
 	defaultPollInterval = 5 * time.Second
+	// 默认加速区域（china：需已完成 ICP 备案）。
+	defaultGeoCover = geoCoverChina
 )
 
 type Deployer struct {
@@ -93,6 +120,13 @@ var _ Provider = (*Deployer)(nil)
 func NewDeployer(config *DeployerConfig) (*Deployer, error) {
 	if config == nil {
 		return nil, fmt.Errorf("the configuration of the deployer provider is nil")
+	}
+
+	// 加速区域合法性校验（空串取默认值；不在此处对"china 必须有备案号"做硬校验，备案校验交给平台错误透出）
+	switch config.GeoCover {
+	case "", geoCoverChina, geoCoverForeign, geoCoverGlobal:
+	default:
+		return nil, fmt.Errorf("config `geoCover` is invalid: %q (must be one of: china, foreign, global)", config.GeoCover)
 	}
 
 	client := qiniusdk.NewKodoManager(auth.New(config.AccessKey, config.SecretKey))
@@ -202,12 +236,18 @@ func (d *Deployer) autoOnboardDomain(ctx context.Context) error {
 	domainInfo, err := d.sdkDomain.GetDomainInfo(ctx, d.config.Domain)
 	d.logger.Debug("sdk request 'cdn.GetDomainInfo'", slog.String("params.domain", d.config.Domain), slog.Any("response", domainInfo))
 	if err != nil {
+		// 域名不存在时，先确保归属权验证通过（七牛对未验证归属的域名拒绝创建，创建时报 400932）
+		if err := d.ensureDomainOwnership(ctx); err != nil {
+			return err
+		}
+
 		createDomainReq := &qiniusdk.CreateDomainRequest{
-			Name:     d.config.Domain,
-			Type:     "normal",
-			Platform: "web",
-			GeoCover: "china",
-			Protocol: "http",
+			Name:       d.config.Domain,
+			Type:       "normal",
+			Platform:   "web",
+			GeoCover:   d.geoCover(),
+			Protocol:   "http",
+			RegisterNo: d.config.IcpRegisterNo,
 			Source: &qiniusdk.CreateDomainRequestSource{
 				SourceType:        "qiniuBucket",
 				SourceQiniuBucket: d.config.Bucket,
@@ -273,6 +313,94 @@ func (d *Deployer) autoOnboardDomain(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// 确保域名归属权验证通过（七牛在创建 CDN 加速域名前校验域名归属，未验证时创建返回 400932）。
+//
+// 流程：查询验证信息 → 若处于待验证状态，按响应中的主机记录与挂载基准域写入 TXT 验证记录
+// （固定覆盖、不受 DnsOverwriteExisting 约束——归属挑战记录属内部自管记录，残留旧值必然阻塞校验）→
+// 轮询触发平台校验直至通过。
+//
+// 宽容策略：查询验证信息出错时不阻断流程（已验证域名 / 端点不适用等场景），
+// 真正缺失归属验证时由后续 CreateDomain 的平台原始错误兜底。
+// REF: https://developer.qiniu.com/fusion/4246/the-domain-name
+func (d *Deployer) ensureDomainOwnership(ctx context.Context) error {
+	verifyInfo, err := d.sdkDomain.GetDomainVerifyInfo(ctx, d.config.Domain)
+	d.logger.Debug("sdk request 'cdn.GetDomainVerifyInfo'", slog.String("params.domain", d.config.Domain), slog.Any("response", verifyInfo), slog.Any("error", err))
+	if err != nil {
+		d.logger.Warn("could not query domain verify info, skip domain ownership verification", slog.String("domain", d.config.Domain), slog.Any("error", err))
+		return nil
+	}
+
+	// 已通过验证 / 无需验证 / 无 DNS 验证挑战信息时无需处理
+	if verifyInfo.State == domainVerifyStateSuccess || verifyInfo.State == domainVerifyStateNoNeed || verifyInfo.Dns == nil {
+		return nil
+	}
+
+	// DNS 验证记录的完整 FQDN = 挑战主机记录 + 挂载基准域；基准域可能是根域名，与部署域名不同
+	fullHost := verifyInfo.Dns.Host + "." + verifyInfo.Domain
+	mainDomain, subDomain, err := alidnssdk.SplitMainDomain(fullHost)
+	if err != nil {
+		return fmt.Errorf("could not split domain '%s': %w", fullHost, err)
+	}
+
+	recordType := verifyInfo.Dns.RecordType
+	if recordType == "" {
+		recordType = "TXT"
+	}
+
+	ensureRecordResp, err := d.sdkDNS.EnsureDomainRecord(ctx, &alidnssdk.EnsureDomainRecordRequest{
+		MainDomain:        mainDomain,
+		SubDomain:         subDomain,
+		RecordType:        recordType,
+		RecordValue:       verifyInfo.Dns.RecordValue,
+		OverwriteExisting: true,
+	})
+	d.logger.Debug("sdk request 'alidns.EnsureDomainRecord' (domain ownership)", slog.String("params.mainDomain", mainDomain), slog.String("params.subDomain", subDomain), slog.Any("response", ensureRecordResp))
+	if err != nil {
+		// 冲突等错误原样上抛（ErrRecordConflict 的错误信息已含现有记录值），并附 TXT 全名便于排查
+		return fmt.Errorf("failed to ensure domain ownership txt record '%s': %w", fullHost, err)
+	}
+
+	// 轮询触发平台校验直至通过：平台主动查询 DNS 解析记录，记录未生效时接口报错，按间隔重试
+	deadline := time.Now().Add(d.waitVerifyTimeout())
+
+	for {
+		checkResp, err := d.sdkDomain.CheckDomainVerify(ctx, d.config.Domain)
+		d.logger.Debug("sdk request 'cdn.CheckDomainVerify'", slog.String("params.domain", d.config.Domain), slog.Any("response", checkResp), slog.Any("error", err))
+		if err == nil {
+			d.logger.Info("domain ownership verified", slog.String("domain", d.config.Domain), slog.String("txt.host", fullHost))
+			return nil
+		}
+
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("domain ownership verification aborted: please check the TXT record '%s' (value '%s') manually: %w", fullHost, verifyInfo.Dns.RecordValue, err)
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("wait for domain ownership verification timed out: please check the TXT record '%s' (value '%s') manually", fullHost, verifyInfo.Dns.RecordValue)
+		}
+
+		wait := d.pollInterval
+		if wait > remaining {
+			wait = remaining
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("domain ownership verification aborted: please check the TXT record '%s' (value '%s') manually: %w", fullHost, verifyInfo.Dns.RecordValue, ctx.Err())
+		case <-time.After(wait):
+		}
+	}
+}
+
+// 获取加速区域配置；空串取默认值。
+func (d *Deployer) geoCover() string {
+	if d.config.GeoCover != "" {
+		return d.config.GeoCover
+	}
+	return defaultGeoCover
 }
 
 // 轮询域名信息直至满足条件或超时；全程尊重 ctx 取消。

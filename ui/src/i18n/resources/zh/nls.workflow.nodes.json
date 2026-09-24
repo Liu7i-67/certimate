@@ -2119,7 +2119,7 @@
         "errmsg": {
           "wildcard_unsupported": "自动接入域名暂不支持泛域名"
         },
-        "tooltip": "开启后，部署时将自动把自定义域名接入七牛云、写入 CNAME 解析记录并等待生效后绑定证书。目标域名需已完成 ICP 备案；七牛云授权需具备 Kodo 读写及 CDN 域名管理权限。"
+        "tooltip": "开启后，部署时将自动把自定义域名接入七牛云、写入 CNAME 解析记录并等待生效后绑定证书。首次接入新根域名时，certimate 会自动在 DNS 写入归属权验证 TXT 记录并触发校验；加速区域选择中国大陆或全球时，要求域名已完成 ICP 备案，可选填备案号，选择境外时免备案。七牛云授权需具备 Kodo 读写及 CDN 域名管理权限。"
       },
       "qiniu_kodo_dns_overwrite_existing": {
         "label": "覆盖已有解析记录",
@@ -2143,6 +2143,28 @@
         "placeholder": "请输入等待域名生效的超时时间",
         "tooltip": "自动接入域名后，等待平台校验/CNAME 解析生效的最长时间（60～3600 秒），超时后部署将报错。",
         "unit": "秒"
+      },
+      "qiniu_kodo_geo_cover": {
+        "label": "加速区域",
+        "placeholder": "请选择加速区域",
+        "errmsg": {
+          "invalid": "请选择有效的加速区域"
+        },
+        "option": {
+          "china": {
+            "label": "中国大陆"
+          },
+          "global": {
+            "label": "全球"
+          },
+          "foreign": {
+            "label": "境外"
+          }
+        }
+      },
+      "qiniu_kodo_icp_register_no": {
+        "label": "ICP 备案号",
+        "placeholder": "请输入 ICP 备案号（选填），如沪ICP备XXXXXXX号"
       },
       "qiniu_pili_hub": {
         "label": "七牛云视频直播空间名",
