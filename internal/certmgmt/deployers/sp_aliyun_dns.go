@@ -1,0 +1,29 @@
+package deployers
+
+import (
+	"fmt"
+
+	"github.com/certimate-go/certimate/internal/domain"
+	"github.com/certimate-go/certimate/pkg/core"
+	dplyimpl "github.com/certimate-go/certimate/pkg/core/deployer/providers/aliyun-dns"
+	xmaps "github.com/certimate-go/certimate/pkg/utils/maps"
+)
+
+func init() {
+	Registries.MustRegister(domain.DeploymentProviderTypeAliyunDNS, func(options *ProviderFactoryOptions) (core.Deployer, error) {
+		credentials := domain.AccessConfigForAliyun{}
+		if err := xmaps.Populate(options.ProviderAccessConfig, &credentials); err != nil {
+			return nil, fmt.Errorf("failed to populate provider access config: %w", err)
+		}
+
+		provider, err := dplyimpl.NewDeployer(&dplyimpl.DeployerConfig{
+			AccessKeyId:       credentials.AccessKeyId,
+			AccessKeySecret:   credentials.AccessKeySecret,
+			Domain:            xmaps.GetString(options.ProviderExtendedConfig, "domain"),
+			RecordType:        xmaps.GetString(options.ProviderExtendedConfig, "recordType"),
+			RecordValue:       xmaps.GetString(options.ProviderExtendedConfig, "recordValue"),
+			OverwriteExisting: xmaps.GetBool(options.ProviderExtendedConfig, "overwriteExisting"),
+		})
+		return provider, err
+	})
+}

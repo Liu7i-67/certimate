@@ -328,6 +328,7 @@ const (
 	DeploymentProviderTypeAliyunCLB                     = DeploymentProviderType(AccessProviderTypeAliyun + "-clb")
 	DeploymentProviderTypeAliyunDCDN                    = DeploymentProviderType(AccessProviderTypeAliyun + "-dcdn")
 	DeploymentProviderTypeAliyunDDoSPro                 = DeploymentProviderType(AccessProviderTypeAliyun + "-ddospro")
+	DeploymentProviderTypeAliyunDNS                     = DeploymentProviderType(AccessProviderTypeAliyun + "-dns")
 	DeploymentProviderTypeAliyunESA                     = DeploymentProviderType(AccessProviderTypeAliyun + "-esa")
 	DeploymentProviderTypeAliyunESASaaS                 = DeploymentProviderType(AccessProviderTypeAliyun + "-esasaas")
 	DeploymentProviderTypeAliyunFC                      = DeploymentProviderType(AccessProviderTypeAliyun + "-fc")

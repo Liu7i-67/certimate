@@ -784,6 +784,23 @@
         "label": "Alibaba Cloud Anti-DDoS domain",
         "placeholder": "Please enter Alibaba Cloud Anti-DDoS domain name"
       },
+      "aliyun_dns_domain": {
+        "label": "Record name",
+        "placeholder": "Enter the fully qualified record name (e.g. bucket.example.com)"
+      },
+      "aliyun_dns_record_type": {
+        "label": "Record type",
+        "placeholder": "Select the record type"
+      },
+      "aliyun_dns_record_value": {
+        "label": "Record value",
+        "placeholder": "Enter the record value (e.g. the server IP for A records)",
+        "tooltip": "For A/AAAA records enter an IP address; for CNAME records enter a target domain name."
+      },
+      "aliyun_dns_overwrite_existing": {
+        "label": "Overwrite existing record",
+        "tooltip": "When enabled, an existing record with a different value will be overwritten; disabled by default, in which case the deployment fails to protect the existing resolution (the error message contains the current value)."
+      },
       "aliyun_esa_region": {
         "label": "Alibaba Cloud region",
         "placeholder": "Please enter Alibaba Cloud ESA region (e.g. cn-hangzhou)",
