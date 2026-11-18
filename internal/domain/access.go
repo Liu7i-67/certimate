@@ -419,6 +419,11 @@ type AccessConfigForLiteSSL struct {
 	AccessConfigForACMEExternalAccountBinding
 }
 
+type AccessConfigForLuaDNS struct {
+	Username string `json:"username"`
+	ApiKey   string `json:"apiKey"`
+}
+
 type AccessConfigForMatrix struct {
 	ServerUrl   string `json:"serverUrl"`
 	UserId      string `json:"userId"`
@@ -657,8 +662,8 @@ type AccessConfigForTencentCloud struct {
 }
 
 type AccessConfigForUCloud struct {
-	PrivateKey string `json:"privateKey"`
 	PublicKey  string `json:"publicKey"`
+	PrivateKey string `json:"privateKey"`
 	ProjectId  string `json:"projectId,omitempty"`
 }
 
